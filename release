@@ -1,4 +1,4 @@
 #!/bin/bash
 
-GITHUB_TOKEN="$(gh auth token)" goreleaser "$@"
+PATH="$PWD/scripts/shims:$PATH" GITHUB_TOKEN="$(gh auth token)" goreleaser "$@"
 
