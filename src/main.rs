@@ -1,21 +1,21 @@
-use std::fs;
-use std::sync::Arc;
-use std::net::SocketAddr;
-use std::io::BufReader;
-use tokio::net::TcpListener;
-use tokio_rustls::{TlsAcceptor, rustls};
-use rustls::{ServerConfig, DistinguishedName, SignatureScheme};
-use rustls::server::danger::{ClientCertVerifier, ClientCertVerified};
+use bytes::Bytes;
+use http_body_util::Full;
+use hyper::service::service_fn;
+use hyper::{Method, Request, Response, StatusCode};
+use hyper_util::rt::TokioIo;
 use rustls::client::danger::HandshakeSignatureValid;
 use rustls::pki_types::CertificateDer;
+use rustls::server::danger::{ClientCertVerified, ClientCertVerifier};
 use rustls::DigitallySignedStruct;
-use hyper::{Request, Response, Method, StatusCode};
-use hyper::service::service_fn;
-use hyper_util::rt::TokioIo;
-use http_body_util::Full;
+use rustls::{DistinguishedName, ServerConfig, SignatureScheme};
+use sha1::{Digest, Sha1};
+use std::fs;
+use std::io::BufReader;
+use std::net::SocketAddr;
+use std::sync::Arc;
+use tokio::net::TcpListener;
+use tokio_rustls::{rustls, TlsAcceptor};
 use x509_parser::prelude::*;
-use sha1::{Sha1, Digest};
-use bytes::Bytes;
 
 fn get_algorithm_name(oid: &str) -> String {
     match oid {
@@ -235,6 +235,9 @@ async fn handle_request(
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    rustls::crypto::ring::default_provider().install_default()
+        .or(Err("initialization failed"))?;
+
     let addr: SocketAddr = "127.0.0.1:8443".parse()?;
     
     let cert_file = fs::File::open("server.crt")?;
