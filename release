@@ -1,0 +1,4 @@
+#!/bin/bash
+
+GITHUB_TOKEN="$(gh auth token)" goreleaser "$@"
+

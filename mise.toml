@@ -1,0 +1,3 @@
+[tools]
+"cargo:cargo-zigbuild" = "latest"
+goreleaser = "latest"
