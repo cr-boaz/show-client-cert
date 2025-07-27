@@ -17,6 +17,9 @@ use tokio::net::TcpListener;
 use tokio_rustls::{rustls, TlsAcceptor};
 use x509_parser::prelude::*;
 
+static EMBEDDED_CERT: &[u8] = include_bytes!("../server.crt");
+static EMBEDDED_KEY: &[u8] = include_bytes!("../server.key");
+
 fn get_algorithm_name(oid: &str) -> String {
     match oid {
         // RSA algorithms
@@ -233,6 +236,34 @@ async fn handle_request(
         .unwrap())
 }
 
+fn load_certificates() -> Result<Vec<CertificateDer<'static>>, Box<dyn std::error::Error>> {
+    if let Ok(cert_file) = fs::File::open("server.crt") {
+        let mut cert_reader = BufReader::new(cert_file);
+        let certs = rustls_pemfile::certs(&mut cert_reader)
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(certs)
+    } else {
+        let mut cert_reader = std::io::Cursor::new(EMBEDDED_CERT);
+        let certs = rustls_pemfile::certs(&mut cert_reader)
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(certs)
+    }
+}
+
+fn load_private_key() -> Result<rustls::pki_types::PrivateKeyDer<'static>, Box<dyn std::error::Error>> {
+    if let Ok(key_file) = fs::File::open("server.key") {
+        let mut key_reader = BufReader::new(key_file);
+        let key = rustls_pemfile::private_key(&mut key_reader)?
+            .ok_or("No private key found")?;
+        Ok(key)
+    } else {
+        let mut key_reader = std::io::Cursor::new(EMBEDDED_KEY);
+        let key = rustls_pemfile::private_key(&mut key_reader)?
+            .ok_or("No private key found")?;
+        Ok(key)
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     rustls::crypto::ring::default_provider().install_default()
@@ -240,15 +271,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let addr: SocketAddr = "127.0.0.1:8443".parse()?;
     
-    let cert_file = fs::File::open("server.crt")?;
-    let mut cert_reader = BufReader::new(cert_file);
-    let certs = rustls_pemfile::certs(&mut cert_reader)
-        .collect::<Result<Vec<_>, _>>()?;
-    
-    let key_file = fs::File::open("server.key")?;
-    let mut key_reader = BufReader::new(key_file);
-    let key = rustls_pemfile::private_key(&mut key_reader)?
-        .ok_or("No private key found")?;
+    let certs = load_certificates()?;
+    let key = load_private_key()?;
 
     let config = ServerConfig::builder()
         .with_client_cert_verifier(Arc::new(AllowAllClientCertVerifier))
@@ -258,7 +282,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let listener = TcpListener::bind(&addr).await?;
 
     println!("TLS server listening on https://{}", addr);
-    println!("Server expects server.crt and server.key files in the current directory");
+    if fs::metadata("server.crt").is_ok() && fs::metadata("server.key").is_ok() {
+        println!("Using certificate and key files from current directory");
+    } else {
+        println!("Using embedded certificate and key (files not found in current directory)");
+    }
 
     loop {
         let (stream, _) = listener.accept().await?;
